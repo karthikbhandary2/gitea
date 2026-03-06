@@ -5,6 +5,7 @@
 package org
 
 import (
+	"fmt"
 	"net/http"
 
 	activities_model "code.gitea.io/gitea/models/activities"
@@ -12,6 +13,7 @@ import (
 	"code.gitea.io/gitea/models/organization"
 	"code.gitea.io/gitea/models/perm"
 	repo_model "code.gitea.io/gitea/models/repo"
+	system_model "code.gitea.io/gitea/models/system"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/graceful"
 	"code.gitea.io/gitea/modules/log"
@@ -513,6 +515,8 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 	// responses:
 	//   "202":
 	//     description: Deletion started
+	//   "204":
+	//     description: No repositories to delete
 	//   "403":
 	//     "$ref": "#/responses/forbidden"
 	//   "404":
@@ -521,6 +525,11 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 	repos, err := repo_model.GetOrgRepositories(ctx, org.ID)
 	if err != nil {
 		ctx.APIErrorInternal(err)
+		return
+	}
+
+	if len(repos) == 0 {
+		ctx.Status(http.StatusNoContent)
 		return
 	}
 
@@ -539,7 +548,10 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 
 		for _, repo := range repos {
 			if err := repo_service.DeleteRepository(bgCtx, doer, repo, true); err != nil {
-				log.Error("Failed to delete repository %s (ID: %d) in org %s: %v", repo.Name, repo.ID, org.Name, err)
+				desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org %s: %v", repo.Name, repo.ID, org.Name, err)
+				if noticeErr := system_model.CreateNotice(bgCtx, system_model.NoticeRepository, desc); noticeErr != nil {
+					log.Error("Failed to create notice for repo deletion failure: %v", noticeErr)
+				}
 			} else {
 				log.Info("Successfully deleted repository %s (ID: %d) in org %s", repo.Name, repo.ID, org.Name)
 			}

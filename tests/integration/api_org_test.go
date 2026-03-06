@@ -8,16 +8,20 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	auth_model "code.gitea.io/gitea/models/auth"
 	org_model "code.gitea.io/gitea/models/organization"
 	"code.gitea.io/gitea/models/perm"
+	repo_model "code.gitea.io/gitea/models/repo"
+	system_model "code.gitea.io/gitea/models/system"
 	unit_model "code.gitea.io/gitea/models/unit"
 	"code.gitea.io/gitea/models/unittest"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/setting"
 	api "code.gitea.io/gitea/modules/structs"
 	"code.gitea.io/gitea/modules/test"
+	repo_service "code.gitea.io/gitea/services/repository"
 	"code.gitea.io/gitea/tests"
 
 	"github.com/stretchr/testify/assert"
@@ -325,5 +329,87 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 		// Try to delete repos without owner permission
 		req = NewRequest(t, "DELETE", "/api/v1/orgs/org3/repos").AddTokenAuth(nonOwnerToken)
 		MakeRequest(t, req, http.StatusForbidden)
+	})
+
+	t.Run("No system notice created on successful deletion", func(t *testing.T) {
+		defer tests.PrintCurrentTest(t)()
+
+		session := loginUser(t, "user1")
+		token := getTokenForLoggedInUser(t, session, auth_model.AccessTokenScopeWriteOrganization, auth_model.AccessTokenScopeWriteRepository)
+
+		orgName := "test_notice_org"
+		req := NewRequestWithJSON(t, "POST", "/api/v1/orgs", &api.CreateOrgOption{
+			UserName: orgName,
+		}).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusCreated)
+
+		// Create a repo
+		req = NewRequestWithJSON(t, "POST", fmt.Sprintf("/api/v1/org/%s/repos", orgName), &api.CreateRepoOption{
+			Name: "test_repo",
+		}).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusCreated)
+
+		// Get initial notice count
+		initialNotices := unittest.GetCount(t, &system_model.Notice{Type: system_model.NoticeRepository})
+
+		// Delete repos
+		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", orgName)).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusAccepted)
+
+		// Wait for background deletion to complete
+		time.Sleep(2 * time.Second)
+
+		// Check if notices were created (should be 0 for successful deletions)
+		finalNotices := unittest.GetCount(t, &system_model.Notice{Type: system_model.NoticeRepository})
+		assert.Equal(t, initialNotices, finalNotices, "No notices should be created for successful deletions")
+	})
+
+	t.Run("Returns 204 when repos already deleted", func(t *testing.T) {
+		defer tests.PrintCurrentTest(t)()
+
+		session := loginUser(t, "user1")
+		token := getTokenForLoggedInUser(t, session, auth_model.AccessTokenScopeWriteOrganization, auth_model.AccessTokenScopeWriteRepository)
+
+		orgName := "test_fail_notice"
+		req := NewRequestWithJSON(t, "POST", "/api/v1/orgs", &api.CreateOrgOption{
+			UserName: orgName,
+		}).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusCreated)
+
+		// Create a repo
+		repoName := "test_fail_repo"
+		req = NewRequestWithJSON(t, "POST", fmt.Sprintf("/api/v1/org/%s/repos", orgName), &api.CreateRepoOption{
+			Name: repoName,
+		}).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusCreated)
+
+		// Delete the repo directly to cause the bulk delete to fail
+		org := unittest.AssertExistsAndLoadBean(t, &org_model.Organization{Name: orgName})
+		repo := unittest.AssertExistsAndLoadBean(t, &repo_model.Repository{Name: repoName, OwnerID: org.ID})
+		user := unittest.AssertExistsAndLoadBean(t, &user_model.User{Name: "user1"})
+
+		err := repo_service.DeleteRepository(t.Context(), user, repo, true)
+		assert.NoError(t, err)
+
+		// Now try to delete all org repos - should return 204 since no repos exist
+		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", orgName)).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusNoContent)
+	})
+
+	t.Run("Returns 204 when no repos exist", func(t *testing.T) {
+		defer tests.PrintCurrentTest(t)()
+
+		session := loginUser(t, "user1")
+		token := getTokenForLoggedInUser(t, session, auth_model.AccessTokenScopeWriteOrganization, auth_model.AccessTokenScopeWriteRepository)
+
+		orgName := "test_empty_org"
+		req := NewRequestWithJSON(t, "POST", "/api/v1/orgs", &api.CreateOrgOption{
+			UserName: orgName,
+		}).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusCreated)
+
+		// Delete repos when org has no repos - should return 204
+		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", orgName)).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusNoContent)
 	})
 }
