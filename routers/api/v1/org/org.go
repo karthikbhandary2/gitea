@@ -139,7 +139,7 @@ func GetUserOrgsPermissions(ctx *context.APIContext) {
 
 	op := api.OrganizationPermissions{}
 
-	if !organization.HasOrgOrUserVisible(ctx, o, ctx.ContextUser) {
+	if !organization.HasOrgOrUserVisible(ctx, o, ctx.Doer) {
 		ctx.APIErrorNotFound("HasOrgOrUserVisible", nil)
 		return
 	}
