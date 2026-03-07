@@ -255,9 +255,8 @@ func TestAPIOrgGeneral(t *testing.T) {
 }
 
 func TestAPIDeleteOrgRepos(t *testing.T) {
-	defer tests.PrepareTestEnv(t)()
-
 	t.Run("Delete all repos successfully", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		// Create test org with owner
@@ -284,7 +283,8 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 		MakeRequest(t, req, http.StatusAccepted)
 	})
 
-	t.Run("Verify response structure", func(t *testing.T) {
+	t.Run("Verify delete status code", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -310,6 +310,7 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Fail without permissions", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		// user2 is owner of org3
@@ -332,6 +333,7 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("No system notice created on successful deletion", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -356,8 +358,23 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", orgName)).AddTokenAuth(token)
 		MakeRequest(t, req, http.StatusAccepted)
 
-		// Wait for background deletion to complete
-		time.Sleep(2 * time.Second)
+		// Wait for background deletion to complete (poll until done)
+		org := unittest.AssertExistsAndLoadBean(t, &org_model.Organization{Name: orgName})
+		maxWait := 10 * time.Second
+		checkInterval := 200 * time.Millisecond
+		elapsed := time.Duration(0)
+
+		for elapsed < maxWait {
+			time.Sleep(checkInterval)
+			elapsed += checkInterval
+
+			remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
+			assert.NoError(t, err)
+
+			if len(remainingRepos) == 0 {
+				break
+			}
+		}
 
 		// Check if notices were created (should be 0 for successful deletions)
 		finalNotices := unittest.GetCount(t, &system_model.Notice{Type: system_model.NoticeRepository})
@@ -365,6 +382,7 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Returns 204 when repos already deleted", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -397,6 +415,7 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Returns 204 when no repos exist", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -411,5 +430,55 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 		// Delete repos when org has no repos - should return 204
 		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", orgName)).AddTokenAuth(token)
 		MakeRequest(t, req, http.StatusNoContent)
+	})
+
+	t.Run("Pagination works for large org", func(t *testing.T) {
+		defer tests.PrepareTestEnv(t)()
+		defer tests.PrintCurrentTest(t)()
+
+		session := loginUser(t, "user1")
+		token := getTokenForLoggedInUser(t, session, auth_model.AccessTokenScopeWriteOrganization, auth_model.AccessTokenScopeWriteRepository)
+
+		orgName := "test_pagination_org"
+		req := NewRequestWithJSON(t, "POST", "/api/v1/orgs", &api.CreateOrgOption{
+			UserName: orgName,
+		}).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusCreated)
+
+		// Create 75 repos to test pagination (batch size is 50)
+		for i := range 75 {
+			repoName := fmt.Sprintf("test_repo_%d", i)
+			req := NewRequestWithJSON(t, "POST", fmt.Sprintf("/api/v1/org/%s/repos", orgName), &api.CreateRepoOption{
+				Name: repoName,
+			}).AddTokenAuth(token)
+			MakeRequest(t, req, http.StatusCreated)
+		}
+
+		// Delete all repos - should return 202 Accepted
+		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", orgName)).AddTokenAuth(token)
+		MakeRequest(t, req, http.StatusAccepted)
+
+		// Wait for background deletion to complete (poll until done)
+		org := unittest.AssertExistsAndLoadBean(t, &org_model.Organization{Name: orgName})
+		maxWait := 30 * time.Second
+		checkInterval := 500 * time.Millisecond
+		elapsed := time.Duration(0)
+
+		for elapsed < maxWait {
+			time.Sleep(checkInterval)
+			elapsed += checkInterval
+
+			remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
+			assert.NoError(t, err)
+
+			if len(remainingRepos) == 0 {
+				break
+			}
+		}
+
+		// Verify all repos were deleted
+		remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
+		assert.NoError(t, err)
+		assert.Empty(t, remainingRepos, "Org is empty")
 	})
 }
