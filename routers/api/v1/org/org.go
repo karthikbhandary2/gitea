@@ -552,6 +552,10 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 		bgCtx := graceful.GetManager().HammerContext()
 
 		const batchSize = 50
+		const maxRetries = 3
+		// Track failed deletions with retry limit to prevent infinite loops when repos cannot be deleted.
+		// If a repo fails 3 times, skip it; if all remaining repos have hit max retries, exit the loop.
+		failedRepos := make(map[int64]int) // repo ID -> retry count
 
 		for {
 			repos := make([]*repo_model.Repository, 0, batchSize)
@@ -572,15 +576,31 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 				break
 			}
 
+			allFailed := true
 			for _, repo := range repos {
+				// Skip repos that have failed too many times
+				if failedRepos[repo.ID] >= maxRetries {
+					continue
+				}
+
 				if err := repo_service.DeleteRepository(bgCtx, doer, repo, true); err != nil {
-					desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org ID %d: %v", repo.Name, repo.ID, orgID, err)
+					failedRepos[repo.ID]++
+					desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org ID %d (attempt %d/%d): %v",
+						repo.Name, repo.ID, orgID, failedRepos[repo.ID], maxRetries, err)
 					if noticeErr := system_model.CreateNotice(bgCtx, system_model.NoticeRepository, desc); noticeErr != nil {
 						log.Error("Failed to create notice for repo deletion failure: %v", noticeErr)
 					}
 				} else {
+					allFailed = false
+					delete(failedRepos, repo.ID) // Remove from failed map if it succeeds
 					log.Info("Successfully deleted repository %s (ID: %d) in org ID %d", repo.Name, repo.ID, orgID)
 				}
+			}
+
+			// If all repos in this batch have failed max retries, break to avoid infinite loop
+			if allFailed && len(failedRepos) > 0 {
+				log.Error("All remaining repositories failed to delete after %d retries for org ID %d", maxRetries, orgID)
+				break
 			}
 		}
 		log.Info("Completed deletion of repositories in org ID %d", orgID)

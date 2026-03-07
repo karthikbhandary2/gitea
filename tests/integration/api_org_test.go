@@ -255,8 +255,9 @@ func TestAPIOrgGeneral(t *testing.T) {
 }
 
 func TestAPIDeleteOrgRepos(t *testing.T) {
+	defer tests.PrepareTestEnv(t)()
+
 	t.Run("Delete all repos successfully", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		// Create test org with owner
@@ -284,7 +285,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Verify delete status code", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -310,7 +310,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Fail without permissions", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		// user2 is owner of org3
@@ -333,7 +332,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("No system notice created on successful deletion", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -382,7 +380,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Returns 204 when repos already deleted", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -415,7 +412,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Returns 204 when no repos exist", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -433,7 +429,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("Pagination works for large org", func(t *testing.T) {
-		defer tests.PrepareTestEnv(t)()
 		defer tests.PrintCurrentTest(t)()
 
 		session := loginUser(t, "user1")
@@ -479,6 +474,6 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 		// Verify all repos were deleted
 		remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
 		assert.NoError(t, err)
-		assert.Empty(t, remainingRepos, "Org is empty")
+		assert.Empty(t, remainingRepos, "All repositories should be deleted")
 	})
 }
