@@ -522,13 +522,13 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 	//   "404":
 	//     "$ref": "#/responses/notFound"
 	org := ctx.Org.Organization
-	repos, err := repo_model.GetOrgRepositories(ctx, org.ID)
+	repoIDs, err := repo_model.GetOrgRepositoryIDs(ctx, org.ID)
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
 	}
 
-	if len(repos) == 0 {
+	if len(repoIDs) == 0 {
 		ctx.Status(http.StatusNoContent)
 		return
 	}
@@ -549,7 +549,15 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 		// Use HammerContext so deletion continues even if client disconnects
 		bgCtx := graceful.GetManager().HammerContext()
 
-		for _, repo := range repos {
+		for _, repoID := range repoIDs {
+			repo, err := repo_model.GetRepositoryByID(bgCtx, repoID)
+			if err != nil {
+				desc := fmt.Sprintf("Failed to get repository ID %d in org %s: %v", repoID, org.Name, err)
+				if noticeErr := system_model.CreateNotice(bgCtx, system_model.NoticeRepository, desc); noticeErr != nil {
+					log.Error("Failed to create notice for repo get failure: %v", noticeErr)
+				}
+				continue
+			}
 			if err := repo_service.DeleteRepository(bgCtx, doer, repo, true); err != nil {
 				desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org %s: %v", repo.Name, repo.ID, org.Name, err)
 				if noticeErr := system_model.CreateNotice(bgCtx, system_model.NoticeRepository, desc); noticeErr != nil {

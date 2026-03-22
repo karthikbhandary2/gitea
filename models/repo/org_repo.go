@@ -21,6 +21,12 @@ func GetOrgRepositories(ctx context.Context, orgID int64) (RepositoryList, error
 	return orgRepos, db.GetEngine(ctx).Where("owner_id = ?", orgID).Find(&orgRepos)
 }
 
+// GetOrgRepositoryIDs get repo IDs belonging to the given organization
+func GetOrgRepositoryIDs(ctx context.Context, orgID int64) ([]int64, error) {
+	var repoIDs []int64
+	return repoIDs, db.GetEngine(ctx).Table("repository").Where("owner_id = ?", orgID).Cols("id").Find(&repoIDs)
+}
+
 type SearchTeamRepoOptions struct {
 	db.ListOptions
 	TeamID int64
