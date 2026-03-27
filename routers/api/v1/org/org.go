@@ -5,8 +5,8 @@
 package org
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"net/http"
 
 	activities_model "code.gitea.io/gitea/models/activities"
