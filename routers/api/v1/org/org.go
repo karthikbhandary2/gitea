@@ -522,6 +522,7 @@ func deleteOrgReposBackground(ctx gocontext.Context, org *organization.Organizat
 		}
 		if err := repo_service.DeleteRepository(ctx, doer, repo, true); err != nil {
 			desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org %s: %v", repo.Name, repo.ID, org.Name, err)
+			_ = system_model.CreateNotice(ctx, system_model.NoticeRepository, desc)
 			log.Error("DeleteRepository failed: %v", desc)
 			continue
 		}
