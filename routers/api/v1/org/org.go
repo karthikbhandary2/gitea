@@ -5,6 +5,7 @@
 package org
 
 import (
+	gocontext "context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -504,6 +505,31 @@ func ListOrgActivityFeeds(ctx *context.APIContext) {
 	ctx.JSON(http.StatusOK, convert.ToActivities(ctx, feeds, ctx.Doer))
 }
 
+func deleteOrgReposBackground(ctx gocontext.Context, org *organization.Organization, repoIDs []int64, doer *user_model.User) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("panic during org repo deletion: %v, stack: %v", r, log.Stack(2))
+		}
+	}()
+
+	for _, repoID := range repoIDs {
+		repo, err := repo_model.GetRepositoryByID(ctx, repoID)
+		if err != nil {
+			desc := fmt.Sprintf("Failed to get repository ID %d in org %s: %v", repoID, org.Name, err)
+			_ = system_model.CreateNotice(ctx, system_model.NoticeRepository, desc)
+			log.Error("GetRepositoryByID failed: %v", desc)
+			continue
+		}
+		if err := repo_service.DeleteRepository(ctx, doer, repo, true); err != nil {
+			desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org %s: %v", repo.Name, repo.ID, org.Name, err)
+			log.Error("DeleteRepository failed: %v", desc)
+			continue
+		}
+		log.Info("Successfully deleted repository %s (ID: %d) in org %s", repo.Name, repo.ID, org.Name)
+	}
+	log.Info("Completed deletion of repositories in org %s", org.Name)
+}
+
 func DeleteOrgRepos(ctx *context.APIContext) {
 	// swagger:operation DELETE /orgs/{org}/repos organization orgDeleteRepos
 	// ---
@@ -525,8 +551,8 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 	//     "$ref": "#/responses/forbidden"
 	//   "404":
 	//     "$ref": "#/responses/notFound"
-	org := ctx.Org.Organization
-	repoIDs, err := repo_model.GetOrgRepositoryIDs(ctx, org.ID)
+
+	repoIDs, err := repo_model.GetOrgRepositoryIDs(ctx, ctx.Org.Organization.ID)
 	if err != nil {
 		ctx.APIErrorInternal(err)
 		return
@@ -537,42 +563,8 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 		return
 	}
 
-	doer := ctx.Doer
-
 	// Start deletion in background with detached context
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				desc := fmt.Sprintf("Panic during org repo deletion for org ID %d: %v", org.ID, r)
-				if noticeErr := system_model.CreateNotice(graceful.GetManager().HammerContext(), system_model.NoticeRepository, desc); noticeErr != nil {
-					log.Error("Failed to create notice for panic: %v", noticeErr)
-				}
-			}
-		}()
-
-		// Use HammerContext so deletion continues even if client disconnects
-		bgCtx := graceful.GetManager().HammerContext()
-
-		for _, repoID := range repoIDs {
-			repo, err := repo_model.GetRepositoryByID(bgCtx, repoID)
-			if err != nil {
-				desc := fmt.Sprintf("Failed to get repository ID %d in org %s: %v", repoID, org.Name, err)
-				if noticeErr := system_model.CreateNotice(bgCtx, system_model.NoticeRepository, desc); noticeErr != nil {
-					log.Error("Failed to create notice for repo get failure: %v", noticeErr)
-				}
-				continue
-			}
-			if err := repo_service.DeleteRepository(bgCtx, doer, repo, true); err != nil {
-				desc := fmt.Sprintf("Failed to delete repository %s (ID: %d) in org %s: %v", repo.Name, repo.ID, org.Name, err)
-				if noticeErr := system_model.CreateNotice(bgCtx, system_model.NoticeRepository, desc); noticeErr != nil {
-					log.Error("Failed to create notice for repo deletion failure: %v", noticeErr)
-				}
-			} else {
-				log.Info("Successfully deleted repository %s (ID: %d) in org %s", repo.Name, repo.ID, org.Name)
-			}
-		}
-		log.Info("Completed deletion of repositories in org %s", org.Name)
-	}()
+	go deleteOrgReposBackground(graceful.GetManager().ShutdownContext(), ctx.Org.Organization, repoIDs, ctx.Doer)
 
 	ctx.Status(http.StatusAccepted)
 }
