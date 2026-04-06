@@ -400,21 +400,11 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 
 		org := unittest.AssertExistsAndLoadBean(t, &org_model.Organization{Name: orgName})
 
-		maxWait := 10 * time.Second
-		checkInterval := 200 * time.Millisecond
-		elapsed := time.Duration(0)
-
-		for elapsed < maxWait {
-			time.Sleep(checkInterval)
-			elapsed += checkInterval
-
-			remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
-			assert.NoError(t, err)
-
-			if len(remainingRepos) == 0 {
-				break
-			}
-		}
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			repos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
+			assert.NoError(c, err)
+			assert.Empty(c, repos, "All repos should be deleted")
+		}, 10*time.Second, 200*time.Millisecond)
 
 		finalNotices := unittest.GetCount(
 			t,
@@ -500,24 +490,10 @@ func TestAPIDeleteOrgRepos(t *testing.T) {
 
 		org := unittest.AssertExistsAndLoadBean(t, &org_model.Organization{Name: orgName})
 
-		maxWait := 10 * time.Second
-		checkInterval := 200 * time.Millisecond
-		elapsed := time.Duration(0)
-
-		for elapsed < maxWait {
-			time.Sleep(checkInterval)
-			elapsed += checkInterval
-
-			remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
-			assert.NoError(t, err)
-
-			if len(remainingRepos) == 0 {
-				break
-			}
-		}
-
-		remainingRepos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
-		assert.NoError(t, err)
-		assert.Empty(t, remainingRepos)
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			repos, err := repo_model.GetOrgRepositories(t.Context(), org.ID)
+			assert.NoError(c, err)
+			assert.Empty(c, repos)
+		}, 10*time.Second, 200*time.Millisecond)
 	})
 }
