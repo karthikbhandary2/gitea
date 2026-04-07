@@ -566,7 +566,7 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 		return
 	}
 
-	// Start deletion in background with detached context
+	// Start deletion (slow) in background with detached context, so it can continue even if the request is canceled
 	go deleteOrgReposBackground(graceful.GetManager().ShutdownContext(), ctx.Org.Organization, repoIDs, ctx.Doer)
 
 	ctx.Status(http.StatusAccepted)
