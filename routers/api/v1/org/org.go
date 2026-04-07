@@ -553,6 +553,8 @@ func DeleteOrgRepos(ctx *context.APIContext) {
 	//   "404":
 	//     "$ref": "#/responses/notFound"
 
+	// Intentionally it only loads repository IDs to avoid loading too much data into memory
+	// There is no need to do pagination here as the number of repositories is expected to be manageable
 	repoIDs, err := repo_model.GetOrgRepositoryIDs(ctx, ctx.Org.Organization.ID)
 	if err != nil {
 		ctx.APIErrorInternal(err)
