@@ -274,7 +274,7 @@ func testAPIDeleteOrgRepos(t *testing.T) {
 	org3 := unittest.AssertExistsAndLoadBean(t, &user_model.User{Name: "org3"})
 	orgRepos, err := repo_model.GetOrgRepositories(t.Context(), org3.ID)
 	require.NoError(t, err)
-	assert.Len(t, orgRepos, 2)
+	assert.NotEmpty(t, orgRepos) // this org contains repositories, so we can test the deletion of all org repos
 
 	t.Run("NoPermission", func(t *testing.T) {
 		nonOwnerSession := loginUser(t, "user4")
