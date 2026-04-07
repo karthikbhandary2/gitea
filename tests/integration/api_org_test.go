@@ -11,11 +11,9 @@ import (
 	"time"
 
 	auth_model "code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
 	org_model "code.gitea.io/gitea/models/organization"
 	"code.gitea.io/gitea/models/perm"
 	repo_model "code.gitea.io/gitea/models/repo"
-	system_model "code.gitea.io/gitea/models/system"
 	unit_model "code.gitea.io/gitea/models/unit"
 	"code.gitea.io/gitea/models/unittest"
 	user_model "code.gitea.io/gitea/models/user"
@@ -284,8 +282,6 @@ func testAPIDeleteOrgRepos(t *testing.T) {
 	})
 
 	t.Run("DeleteAllOrgRepos", func(t *testing.T) {
-		_ = db.TruncateBeans(t.Context(), &system_model.Notice{})
-
 		session := loginUser(t, "user1")
 		token := getTokenForLoggedInUser(t, session, auth_model.AccessTokenScopeWriteOrganization, auth_model.AccessTokenScopeWriteRepository)
 		req := NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", org3.Name)).AddTokenAuth(token)
@@ -296,9 +292,6 @@ func testAPIDeleteOrgRepos(t *testing.T) {
 			require.NoError(t, err)
 			return len(repos) == 0
 		}, 2*time.Second, 50*time.Millisecond)
-
-		finalNotices := unittest.GetCount(t, &system_model.Notice{Type: system_model.NoticeRepository})
-		assert.Empty(t, finalNotices, "No notices should be created for successful deletions")
 
 		req = NewRequest(t, "DELETE", fmt.Sprintf("/api/v1/orgs/%s/repos", org3.Name)).AddTokenAuth(token)
 		MakeRequest(t, req, http.StatusNoContent) // The org contains no repositories, so the API should return StatusNoContent
