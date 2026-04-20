@@ -62,10 +62,21 @@
   visibility: hidden;
 }
 
+.sidebar-project-card {
+  border: 1px solid var(--color-secondary);
+  border-radius: var(--border-radius);
+  margin-top: var(--gap-block);
+  padding: 8px;
+}
+
 .issue-content-right .ui.list.labels-list {
   display: flex;
   gap: var(--gap-inline);
   flex-wrap: wrap;
+}
+
+.issue-content-right .empty-list {
+  font-size: 12px;
 }
 
 @media (max-width: 767.98px) {
@@ -187,10 +198,6 @@ td .commit-summary {
   padding: 0 !important;
 }
 
-.repo-editor-menu {
-  min-height: auto !important;
-}
-
 .repo-editor-header {
   display: flex;
   margin: 1rem 0;
@@ -285,10 +292,6 @@ td .commit-summary {
 .repository.options #interval {
   width: 100px !important;
   min-width: 100px;
-}
-
-.repository.view.issue .instruct-toggle {
-  display: inline-block;
 }
 
 /* issue title & meta & edit */
@@ -1461,11 +1464,6 @@ tbody.commit-list {
   tr.commit-list {
     width: 1127px;
   }
-}
-
-.commit-list .commit-status-link {
-  display: inline-block;
-  vertical-align: middle;
 }
 
 .commit-body {
