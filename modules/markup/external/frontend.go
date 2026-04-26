@@ -4,12 +4,16 @@
 package external
 
 import (
+	"bytes"
 	"encoding/base64"
 	"io"
+	"strings"
 	"unicode/utf8"
 
 	"code.gitea.io/gitea/modules/htmlutil"
+	"code.gitea.io/gitea/modules/json"
 	"code.gitea.io/gitea/modules/markup"
+	"code.gitea.io/gitea/modules/markup/markdown"
 	"code.gitea.io/gitea/modules/public"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/util"
@@ -58,6 +62,46 @@ func (p *frontendRenderer) GetExternalRendererOptions() (ret markup.ExternalRend
 	return ret
 }
 
+type notebookCell struct {
+	CellType string           `json:"cell_type"`
+	Source   []string         `json:"source"`
+	Outputs  []map[string]any `json:"outputs,omitempty"`
+}
+
+type notebookData struct {
+	Cells         []notebookCell `json:"cells"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+	Nbformat      int            `json:"nbformat,omitempty"`
+	NbformatMinor int            `json:"nbformat_minor,omitempty"`
+}
+
+func preprocessJupyterNotebook(ctx *markup.RenderContext, input io.Reader) ([]byte, error) {
+	content, err := io.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
+
+	var nb notebookData
+	if err := json.Unmarshal(content, &nb); err != nil {
+		return content, nil
+	}
+
+	for i := range nb.Cells {
+		if nb.Cells[i].CellType == "markdown" {
+			var sourceBuilder strings.Builder
+			for _, line := range nb.Cells[i].Source {
+				sourceBuilder.WriteString(line)
+			}
+			var buf bytes.Buffer
+			if err := markdown.RenderRaw(ctx, bytes.NewReader([]byte(sourceBuilder.String())), &buf); err == nil {
+				nb.Cells[i].Source = []string{buf.String()}
+			}
+		}
+	}
+
+	return json.Marshal(nb)
+}
+
 func (p *frontendRenderer) Render(ctx *markup.RenderContext, input io.Reader, output io.Writer) error {
 	if ctx.RenderOptions.StandalonePageOptions == nil {
 		opts := p.GetExternalRendererOptions()
@@ -67,6 +111,13 @@ func (p *frontendRenderer) Render(ctx *markup.RenderContext, input io.Reader, ou
 	content, err := util.ReadWithLimit(input, int(setting.UI.MaxDisplayFileSize))
 	if err != nil {
 		return err
+	}
+
+	if p.name == "jupyter-notebook" {
+		preprocessed, err := preprocessJupyterNotebook(ctx, bytes.NewReader(content))
+		if err == nil {
+			content = preprocessed
+		}
 	}
 
 	contentEncoding, contentString := "text", util.UnsafeBytesToString(content)
@@ -81,6 +132,7 @@ func (p *frontendRenderer) Render(ctx *markup.RenderContext, input io.Reader, ou
 <head>
 	<!-- external-render-helper will be injected here by the markup render -->
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="%s">
 </head>
 <body>
 	<div id="frontend-render-viewer" data-frontend-renders="%s" data-file-tree-path="%s"></div>
@@ -88,6 +140,7 @@ func (p *frontendRenderer) Render(ctx *markup.RenderContext, input io.Reader, ou
 	<script nonce type="module" src="%s"></script>
 </body>
 </html>`,
+		public.AssetURI("css/index.css"),
 		p.name, ctx.RenderOptions.RelativePath,
 		contentEncoding, contentString,
 		public.AssetURI("js/external-render-frontend.js"))
