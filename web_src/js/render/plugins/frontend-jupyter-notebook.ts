@@ -1,4 +1,22 @@
 import type {FrontendRenderFunc} from '../plugin.ts';
+import '../../../css/features/jupyter.css';
+
+// Simple markdown to HTML converter for notebook cells
+function renderMarkdown(markdown: string): string {
+  return markdown
+    // Headers
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Inline code
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    // Line breaks
+    .replace(/\n/g, '<br>');
+}
 
 export const frontendRender: FrontendRenderFunc = async (opts) => {
   try {
@@ -21,18 +39,21 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
 
       if (cell.cell_type === 'markdown') {
         const inputDiv = document.createElement('div');
-        inputDiv.className = 'input';
+        inputDiv.className = 'input markup';
         const source = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
-        inputDiv.innerHTML = source;
+        inputDiv.innerHTML = renderMarkdown(source);
         cellDiv.append(inputDiv);
       } else if (cell.cell_type === 'code') {
-        const inputDiv = document.createElement('div');
-        inputDiv.className = 'input';
+        const inputWrapper = document.createElement('div');
+        inputWrapper.className = 'input-wrapper';
 
         const prompt = document.createElement('div');
-        prompt.className = 'prompt';
+        prompt.className = 'prompt input-prompt';
         prompt.textContent = `In [${cell.execution_count || executionCount}]:`;
-        inputDiv.append(prompt);
+        inputWrapper.append(prompt);
+
+        const inputDiv = document.createElement('div');
+        inputDiv.className = 'input';
 
         const pre = document.createElement('pre');
         const code = document.createElement('code');
@@ -41,33 +62,38 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
         code.textContent = source;
         pre.append(code);
         inputDiv.append(pre);
-        cellDiv.append(inputDiv);
+        inputWrapper.append(inputDiv);
+        cellDiv.append(inputWrapper);
 
         if (cell.outputs && Array.isArray(cell.outputs) && cell.outputs.length > 0) {
-          const outputDiv = document.createElement('div');
-          outputDiv.className = 'output';
+          const outputWrapper = document.createElement('div');
+          outputWrapper.className = 'output-wrapper';
 
           const hasExecutionResult = cell.outputs.some((o: any) => o.output_type === 'execute_result');
+          
+          const outPrompt = document.createElement('div');
+          outPrompt.className = 'prompt output-prompt';
           if (hasExecutionResult) {
-            const outPrompt = document.createElement('div');
-            outPrompt.className = 'prompt';
             outPrompt.textContent = `Out[${cell.execution_count || executionCount}]:`;
-            outputDiv.append(outPrompt);
           }
+          outputWrapper.append(outPrompt);
+
+          const outputDiv = document.createElement('div');
+          outputDiv.className = 'output';
 
           for (const output of cell.outputs) {
             try {
               if (output.data) {
                 if (output.data['image/png']) {
                   const img = document.createElement('img');
-                  const imgData = Array.isArray(output.data['image/png']) ?
+                  const imgData = Array.isArray(output.data['image/png']) ? 
                     output.data['image/png'].join('') : output.data['image/png'];
                   img.src = `data:image/png;base64,${imgData}`;
                   img.style.maxWidth = '100%';
                   outputDiv.append(img);
                 } else if (output.data['image/jpeg']) {
                   const img = document.createElement('img');
-                  const imgData = Array.isArray(output.data['image/jpeg']) ?
+                  const imgData = Array.isArray(output.data['image/jpeg']) ? 
                     output.data['image/jpeg'].join('') : output.data['image/jpeg'];
                   img.src = `data:image/jpeg;base64,${imgData}`;
                   img.style.maxWidth = '100%';
@@ -79,11 +105,20 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
                   svgDiv.innerHTML = svgData;
                   outputDiv.append(svgDiv);
                 } else if (output.data['text/html']) {
+                  const wrapperDiv = document.createElement('div');
+                  wrapperDiv.style.overflowX = 'auto';
+                  wrapperDiv.style.maxWidth = '100%';
                   const htmlDiv = document.createElement('div');
                   const htmlData = Array.isArray(output.data['text/html']) ?
                     output.data['text/html'].join('') : output.data['text/html'];
                   htmlDiv.innerHTML = htmlData;
-                  outputDiv.append(htmlDiv);
+                  // Ensure images inside HTML outputs are constrained
+                  htmlDiv.querySelectorAll('img').forEach((img) => {
+                    img.style.maxWidth = '100%';
+                    img.style.height = 'auto';
+                  });
+                  wrapperDiv.append(htmlDiv);
+                  outputDiv.append(wrapperDiv);
                 } else if (output.data['application/javascript']) {
                   const jsDiv = document.createElement('div');
                   jsDiv.className = 'js-output-warning';
@@ -135,8 +170,8 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
               } else if (output.output_type === 'error') {
                 const errorPre = document.createElement('pre');
                 errorPre.className = 'error-output';
-                errorPre.style.color = '#d32f2f';
-                const traceback = Array.isArray(output.traceback) ? output.traceback.join('\n') :
+                errorPre.style.color = 'var(--color-red)';
+                const traceback = Array.isArray(output.traceback) ? output.traceback.join('\n') : 
                   (output.ename && output.evalue ? `${output.ename}: ${output.evalue}` : 'Error');
                 errorPre.textContent = traceback;
                 outputDiv.append(errorPre);
@@ -152,7 +187,8 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
           }
 
           if (outputDiv.children.length > 0) {
-            cellDiv.append(outputDiv);
+            outputWrapper.append(outputDiv);
+            cellDiv.append(outputWrapper);
           }
         }
 
@@ -166,13 +202,13 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
 
     const {initMarkupCodeMath} = await import('../../markup/math.ts');
     await initMarkupCodeMath(container);
-
+    
     return true;
   } catch (error) {
     console.error('Jupyter notebook rendering failed:', error);
     const errorDiv = document.createElement('div');
     errorDiv.style.padding = '20px';
-    errorDiv.style.color = '#d32f2f';
+    errorDiv.style.color = 'var(--color-red)';
     const errorTitle = document.createElement('strong');
     errorTitle.textContent = 'Failed to render notebook:';
     errorDiv.append(errorTitle);
