@@ -23,7 +23,7 @@
   line-height: 1.6;
   background: var(--color-body);
   color: var(--color-text);
-  margin-left: 90px;
+  margin-left: 110px;
 }
 
 .jupyter-notebook .cell.markdown h1,
@@ -107,7 +107,7 @@
   white-space: nowrap;
   user-select: none;
   text-align: right;
-  width: 80px;
+  width: 100px;
   flex-shrink: 0;
 }
 
@@ -116,6 +116,7 @@
   background-color: var(--color-code-bg, #f6f8fa);
   border: 1px solid var(--color-secondary-alpha-20, #d0d7de);
   border-radius: 4px;
+  min-height: 40px;
 }
 
 .jupyter-notebook .cell.code .input pre {
@@ -139,6 +140,8 @@
   flex: 1;
   background: var(--color-body);
   color: var(--color-text);
+  overflow-x: auto;
+  min-width: 0;
 }
 
 .jupyter-notebook .cell.code .output pre {

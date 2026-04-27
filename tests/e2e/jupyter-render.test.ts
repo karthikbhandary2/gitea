@@ -9,9 +9,9 @@ test.describe('jupyter notebook rendering', () => {
   test.beforeAll(async ({request}) => {
     repoName = `e2e-jupyter-${randomString(8)}`;
     owner = env.GITEA_TEST_E2E_USER;
-    
+
     await apiCreateRepo(request, {name: repoName});
-    
+
     // Single comprehensive test notebook
     const notebook = JSON.stringify({
       cells: [
