@@ -1,6 +1,6 @@
 import {env} from 'node:process';
 import {expect, test} from '@playwright/test';
-import {login, apiCreateRepo, apiCreateFile, randomString} from './utils.ts';
+import {login, apiCreateRepo, apiCreateFile, assertNoJsError, randomString} from './utils.ts';
 
 test.describe('jupyter notebook rendering', () => {
   let repoName: string;
@@ -31,24 +31,28 @@ test.describe('jupyter notebook rendering', () => {
   test('renders markdown cells', async ({page}) => {
     await login(page);
     await page.goto(`/${owner}/${repoName}/src/branch/main/test.ipynb`);
+    await assertNoJsError(page);
     await expect(page.frameLocator('iframe.external-render-iframe').locator('.cell.markdown strong')).toBeVisible();
   });
 
   test('renders code cells with outputs', async ({page}) => {
     await login(page);
     await page.goto(`/${owner}/${repoName}/src/branch/main/test.ipynb`);
+    await assertNoJsError(page);
     await expect(page.frameLocator('iframe.external-render-iframe').locator('.cell.code .output pre').first()).toBeVisible();
   });
 
   test('renders image outputs', async ({page}) => {
     await login(page);
     await page.goto(`/${owner}/${repoName}/src/branch/main/test.ipynb`);
+    await assertNoJsError(page);
     await expect(page.frameLocator('iframe.external-render-iframe').locator('.cell.code .output img')).toBeVisible();
   });
 
   test('renders error outputs', async ({page}) => {
     await login(page);
     await page.goto(`/${owner}/${repoName}/src/branch/main/test.ipynb`);
+    await assertNoJsError(page);
     await expect(page.frameLocator('iframe.external-render-iframe').locator('.error-output')).toBeVisible();
   });
 });

@@ -1,4 +1,4 @@
-/* Override notebookjs default styles with Gitea theme */
+/* Gitea styles for Jupyter notebook content */
 .jupyter-notebook {
   padding: 20px;
   background: var(--color-body);

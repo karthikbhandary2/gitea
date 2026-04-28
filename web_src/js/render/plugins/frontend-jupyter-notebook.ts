@@ -1,6 +1,43 @@
 import type {FrontendRenderFunc} from '../plugin.ts';
 import '../../../css/features/jupyter.css';
 
+// Sanitize HTML by removing dangerous attributes and elements
+function sanitizeHtml(element: HTMLElement) {
+  const dangerousAttrs = ['onerror', 'onload', 'onclick', 'onmouseover', 'onmouseout', 'onmousemove',
+    'onmouseenter', 'onmouseleave', 'onfocus', 'onblur', 'onchange', 'onsubmit', 'onkeydown',
+    'onkeyup', 'onkeypress', 'onanimationstart', 'onanimationend', 'onbegin', 'onend', 'onrepeat'];
+
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT);
+  const nodes: Element[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    nodes.push(node as Element);
+  }
+
+  for (const el of nodes) {
+    // Remove all on* event handlers
+    for (const attr of dangerousAttrs) {
+      el.removeAttribute(attr);
+    }
+
+    // Remove javascript: and data: URLs from href and src
+    const urlPattern = /^(javascript|data):/;
+    const href = el.getAttribute('href');
+    if (href && urlPattern.test(href.toLowerCase().trim())) {
+      el.removeAttribute('href');
+    }
+    const src = el.getAttribute('src');
+    if (src && urlPattern.test(src.toLowerCase().trim())) {
+      el.removeAttribute('src');
+    }
+
+    // Remove <script>, <iframe>, and <foreignObject> elements (SVG can embed HTML via foreignObject)
+    if (el.tagName === 'SCRIPT' || el.tagName === 'IFRAME' || el.tagName === 'foreignObject') {
+      el.remove();
+    }
+  }
+}
+
 // Simple markdown to HTML converter for notebook cells using DOM methods
 function renderMarkdown(markdown: string): HTMLElement {
   const container = document.createElement('div');
@@ -63,6 +100,11 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
       throw new Error('Invalid notebook format: missing or invalid cells array');
     }
 
+    // Detect language from notebook metadata
+    const language = notebook.metadata?.language_info?.name ||
+                     notebook.metadata?.kernelspec?.language ||
+                     'text';
+
     const container = document.createElement('div');
     container.className = 'jupyter-notebook';
 
@@ -86,7 +128,7 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
 
         const prompt = document.createElement('div');
         prompt.className = 'prompt input-prompt';
-        prompt.textContent = `In [${cell.execution_count || executionCount}]:`;
+        prompt.textContent = `In [${cell.execution_count ?? executionCount}]:`;
         inputWrapper.append(prompt);
 
         const inputDiv = document.createElement('div');
@@ -94,7 +136,7 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
 
         const pre = document.createElement('pre');
         const code = document.createElement('code');
-        code.className = 'language-python';
+        code.className = `language-${language}`;
         const source = Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
         code.textContent = source;
         pre.append(code);
@@ -111,7 +153,7 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
           const outPrompt = document.createElement('div');
           outPrompt.className = 'prompt output-prompt';
           if (hasExecutionResult) {
-            outPrompt.textContent = `Out[${cell.execution_count || executionCount}]:`;
+            outPrompt.textContent = `Out[${cell.execution_count ?? executionCount}]:`;
           }
           outputWrapper.append(outPrompt);
 
@@ -140,6 +182,7 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
                   const svgData = Array.isArray(output.data['image/svg+xml']) ?
                     output.data['image/svg+xml'].join('') : output.data['image/svg+xml'];
                   svgDiv.innerHTML = svgData;
+                  sanitizeHtml(svgDiv);
                   outputDiv.append(svgDiv);
                 } else if (output.data['text/html']) {
                   const wrapperDiv = document.createElement('div');
@@ -149,6 +192,7 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
                   const htmlData = Array.isArray(output.data['text/html']) ?
                     output.data['text/html'].join('') : output.data['text/html'];
                   htmlDiv.innerHTML = htmlData;
+                  sanitizeHtml(htmlDiv);
                   // Ensure images inside HTML outputs are constrained
                   for (const img of htmlDiv.querySelectorAll('img')) {
                     img.style.maxWidth = '100%';
@@ -193,11 +237,6 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
                   textPre.textContent = plainText;
                   outputDiv.append(textPre);
                 }
-              } else if (output.text) {
-                const textPre = document.createElement('pre');
-                const text = Array.isArray(output.text) ? output.text.join('') : output.text;
-                textPre.textContent = text;
-                outputDiv.append(textPre);
               } else if (output.output_type === 'stream' && output.name) {
                 const streamPre = document.createElement('pre');
                 streamPre.className = `stream-${output.name}`;
@@ -212,6 +251,11 @@ export const frontendRender: FrontendRenderFunc = async (opts) => {
                   (output.ename && output.evalue ? `${output.ename}: ${output.evalue}` : 'Error');
                 errorPre.textContent = traceback;
                 outputDiv.append(errorPre);
+              } else if (output.text) {
+                const textPre = document.createElement('pre');
+                const text = Array.isArray(output.text) ? output.text.join('') : output.text;
+                textPre.textContent = text;
+                outputDiv.append(textPre);
               }
             } catch (outputError) {
               console.warn('Failed to render output:', outputError);
