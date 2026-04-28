@@ -15,7 +15,7 @@ test.describe('jupyter notebook rendering', () => {
     // Single comprehensive test notebook
     const notebook = JSON.stringify({
       cells: [
-        {cell_type: 'markdown', source: ['# Test\n', '**bold**']},
+        {cell_type: 'markdown', source: ['# Header 1\n', '## Header 2\n', '**bold** *italic* `code`\n', '- List item 1\n', '- List item 2\n', '[link](https://example.com)\n', '| Col1 | Col2 |\n', '|------|------|\n', '| A | B |\n', '```python\ncode block\n```\n', '> blockquote\n', '~~strikethrough~~']},
         {cell_type: 'code', execution_count: 1, source: ['print("Hello")'], outputs: [{output_type: 'stream', name: 'stdout', text: ['Hello\n']}]},
         {cell_type: 'code', execution_count: 2, source: ['x'], outputs: [{output_type: 'execute_result', data: {'image/png': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='}}]},
         {cell_type: 'code', source: ['# No output'], outputs: []},
@@ -32,7 +32,11 @@ test.describe('jupyter notebook rendering', () => {
     await login(page);
     await page.goto(`/${owner}/${repoName}/src/branch/main/test.ipynb`);
     await assertNoJsError(page);
-    await expect(page.frameLocator('iframe.external-render-iframe').locator('.cell.markdown strong')).toBeVisible();
+    const frame = page.frameLocator('iframe.external-render-iframe');
+    await expect(frame.locator('.cell.markdown h1')).toBeVisible();
+    await expect(frame.locator('.cell.markdown strong')).toBeVisible();
+    await expect(frame.locator('.cell.markdown ul li').first()).toBeVisible();
+    await expect(frame.locator('.cell.markdown table')).toBeVisible();
   });
 
   test('renders code cells with outputs', async ({page}) => {

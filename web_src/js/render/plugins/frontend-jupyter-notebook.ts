@@ -1,4 +1,5 @@
 import type {FrontendRenderFunc} from '../plugin.ts';
+import {marked} from 'marked';
 import '../../../css/features/jupyter.css';
 
 // Sanitize HTML by removing dangerous attributes and elements
@@ -38,58 +39,12 @@ function sanitizeHtml(element: HTMLElement) {
   }
 }
 
-// Simple markdown to HTML converter for notebook cells using DOM methods
+// Render markdown using marked library
 function renderMarkdown(markdown: string): HTMLElement {
   const container = document.createElement('div');
-
-  // Split by lines and process
-  const lines = markdown.split('\n');
-  for (const line of lines) {
-    let element: HTMLElement;
-
-    // Headers
-    if (line.startsWith('### ')) {
-      element = document.createElement('h3');
-      element.textContent = line.substring(4);
-    } else if (line.startsWith('## ')) {
-      element = document.createElement('h2');
-      element.textContent = line.substring(3);
-    } else if (line.startsWith('# ')) {
-      element = document.createElement('h1');
-      element.textContent = line.substring(2);
-    } else {
-      element = document.createElement('p');
-      // Process inline formatting
-      processInlineFormatting(element, line);
-    }
-
-    container.append(element);
-  }
-
+  container.innerHTML = marked.parse(markdown) as string;
+  sanitizeHtml(container);
   return container;
-}
-
-// Process bold, italic, and inline code
-function processInlineFormatting(element: HTMLElement, text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/);
-
-  for (const part of parts) {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      const strong = document.createElement('strong');
-      strong.textContent = part.slice(2, -2);
-      element.append(strong);
-    } else if (part.startsWith('*') && part.endsWith('*')) {
-      const em = document.createElement('em');
-      em.textContent = part.slice(1, -1);
-      element.append(em);
-    } else if (part.startsWith('`') && part.endsWith('`')) {
-      const code = document.createElement('code');
-      code.textContent = part.slice(1, -1);
-      element.append(code);
-    } else if (part) {
-      element.append(document.createTextNode(part));
-    }
-  }
 }
 
 export const frontendRender: FrontendRenderFunc = async (opts) => {
