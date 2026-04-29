@@ -9,7 +9,6 @@
 /* Cell containers */
 .jupyter-notebook .cell {
   margin-bottom: 20px;
-  overflow: hidden;
 }
 
 /* Markdown cells */
